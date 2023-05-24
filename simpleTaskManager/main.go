@@ -4,137 +4,106 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"strconv"
+	"simpleTaskManager/TaskManager"
 	"strings"
 )
 
-type task struct {
-	id          int
-	title       string
-	description string
-	completed   bool
-}
-
-var ID int = 0
-
-func (t task) addTask(taskList *[]task) {
-	*taskList = append(*taskList, t)
-}
-
-func (t task) printTask() {
-	fmt.Println("Task ID: ", t.id)
-	fmt.Println("Title: ", t.title)
-	fmt.Println("Description: ", t.description)
-	if t.completed {
-		fmt.Println("Task is COMPLETED!\n")
-	} else {
-		fmt.Println("Task is not completed.\n")
-	}
-}
-
-func (t task) markTask(taskList *[]task, i int) {
-	if t.completed {
-		fmt.Println("Task is already COMPLETED!")
-	} else {
-		(*taskList)[i].completed = true
-		fmt.Println("Task is marked as COMPLETED!")
-	}
-}
-
-func (t task) deleteTask(taskList []task, index int) []task {
-	return append(taskList[:index], taskList[index+1:]...)
-}
-
-func generateTask(title string, description string) task {
-	newTask := task{id: ID, title: title, description: description, completed: false}
-	ID++
-	return newTask
+func input(info string) (string, error) {
+	fmt.Print(info)
+	reader := bufio.NewReader(os.Stdin)
+	inputString, err := reader.ReadString('\n')
+	inputString = strings.TrimSpace(inputString)
+	fmt.Println()
+	return inputString, err
 }
 
 func main() {
 	shouldContinue := true
-	taskList := make([]task, 0)
+	db := TaskManager.InitDB()
 
-	fmt.Print("\nWelcome to Emivvvvv's dumbass uselles basicass task manager!")
+	fmt.Print("\nWelcome to Emivvvvv's dumbass uselles basicass task manager with fuckn database shit!")
+
+	menu := "\n\nMenu:\n" +
+		"1. Add a Task\n" +
+		"2. View Tasks\n" +
+		"3. Mark a Task as Completed\n" +
+		"4. Delete a Task\n" +
+		"5. Filter tasks by status\n" +
+		"6. Exit\n\n" +
+		">>>"
 
 	for shouldContinue {
-
-		fmt.Print("\n\nMenu:\n" +
-			"1. Add a Task\n" +
-			"2. View Tasks\n" +
-			"3. Mark a Task as Completed\n" +
-			"4. Delete a Task\n" +
-			"5. Exit\n\n" +
-			">>>")
-		reader := bufio.NewReader(os.Stdin)
-		command, err := reader.ReadString('\n')
-		command = strings.TrimSpace(command)
+		command, err := input(menu)
 
 		if err == nil {
 			switch command {
 			case "1":
-				fmt.Print("Type the title of the task >>> ")
-				title, err1 := reader.ReadString('\n')
-				title = strings.TrimSpace(title)
-				fmt.Print("\nType the description of the task >>> ")
-				description, err2 := reader.ReadString('\n')
-				description = strings.TrimSpace(description)
+				title, err1 := input("Type the title of the task >>> ")
+				description, err2 := input("Type the description of the task >>> ")
 
-				if err1 != nil || err2 != nil {
-					panic("Something went wrong at case 1")
+				if err1 == nil && err2 == nil {
+					newTask := TaskManager.GenerateTaskToAdd(title, description, "Pending...")
+					db.AddTask(newTask)
 				} else {
-					newTask := generateTask(title, description)
-					newTask.addTask(&taskList)
+					panic("Something went wrong at case 1")
 				}
 				break
 
 			case "2":
-				if len(taskList) == 0 {
-					fmt.Println("List is empty! You can add some task with typing command \"1\"")
-				} else {
-					for _, task := range taskList {
-						task.printTask()
-					}
+				for _, task := range db.GetAllTasks() {
+					task.Print()
 				}
 				break
 
 			case "3":
-				fmt.Print("Type the id of the task >>> ")
-				idInput, err1 := reader.ReadString('\n')
-				idInput = strings.TrimSpace(idInput)
-				id, err1 := strconv.Atoi(idInput)
+				id, err1 := input("Type the id of the task >>> ")
 
 				if err1 == nil {
-					for i, task := range taskList {
-						if task.id == id {
-							task.markTask(&taskList, i)
-							break
-						}
+					task := db.GetTask(TaskManager.StringToObjectID(id))
+					if task == nil {
+						fmt.Println("Couldn't find the task with id: ", id)
 					}
-					fmt.Println("Couldn't find the task with id: ", id)
+					db.UpdateTask(TaskManager.StringToObjectID(id), TaskManager.UpdateStatus("Completed!"))
+					break
 				} else {
 					panic("Something went wrong at case 3")
 				}
 
 			case "4":
-				fmt.Print("Type the id of the task >>> ")
-				idInput, err1 := reader.ReadString('\n')
-				idInput = strings.TrimSpace(idInput)
-				id, err1 := strconv.Atoi(idInput)
+				id, err1 := input("Type the id of the task >>> ")
 
 				if err1 == nil {
-					for i, task := range taskList {
-						if task.id == id {
-							taskList = task.deleteTask(taskList, i)
-							break
-						}
+					task := db.GetTask(TaskManager.StringToObjectID(id))
+					if task == nil {
+						fmt.Println("Couldn't find the task with id: ", id)
 					}
-					fmt.Println("Couldn't find the task with id: ", id)
+					db.DeleteTask(TaskManager.StringToObjectID(id))
 				} else {
 					panic("Something went wrong at case 4")
 				}
 
 			case "5":
+				userInput, err := input("Type\n" +
+					"0 to filter pending tasks\n" +
+					"1 to filter completed tasks\n" +
+					">>>")
+				if err == nil {
+					var filteredTasks *[]TaskManager.Task
+					if userInput == "0" {
+						filteredTasks = db.FilterTasksByStatus("Pending...")
+					} else if userInput == "1" {
+						filteredTasks = db.FilterTasksByStatus("Completed!")
+					} else {
+						fmt.Println("Invalid input!")
+					}
+					for _, task := range *filteredTasks {
+						task.Print()
+					}
+				} else {
+					panic("Something went wrong at case 5")
+				}
+				break
+			case "6":
 				shouldContinue = false
 				fmt.Println("Exiting the program...")
 				break
