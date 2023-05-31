@@ -61,48 +61,48 @@ func UpdateStatus(status string) *bson.D {
 	}
 }
 
-func StringToObjectID(id string) primitive.ObjectID {
+func StringToObjectID(id string) (primitive.ObjectID, error) {
 	objID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		log.Fatal("Invalid ID")
-	}
-
-	return objID
+	return objID, err
 }
 
-func (mp *MongoPack) AddTask(newTask *bson.D) {
+func (mp *MongoPack) AddTask(newTask *bson.D) error {
 	checkInitilized()
 
-	insertResult, err := mp.collection.InsertOne(context.TODO(), newTask)
+	_, err := mp.collection.InsertOne(context.TODO(), newTask)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
-	fmt.Println("Inserted a new todo with id: ", insertResult.InsertedID)
+	return nil
 }
 
-func (mp *MongoPack) DeleteTask(id primitive.ObjectID) {
+func (mp *MongoPack) DeleteTask(id primitive.ObjectID) error {
 	checkInitilized()
 
 	_, err := mp.collection.DeleteOne(context.TODO(), bson.M{"_id": id})
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	return nil
 }
 
-func (mp *MongoPack) UpdateTask(id primitive.ObjectID, newUpdate *bson.D) {
+func (mp *MongoPack) UpdateTask(id primitive.ObjectID, newUpdate *bson.D) error {
 	checkInitilized()
 
 	update := bson.D{{"$set", newUpdate}}
 	_, err := mp.collection.UpdateOne(context.TODO(), bson.M{"_id": id}, update)
 
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
+
+	return nil
 }
 
-func (mp *MongoPack) GetTask(id primitive.ObjectID) *Task {
+func (mp *MongoPack) GetTask(id primitive.ObjectID) (*Task, error) {
 	checkInitilized()
 
 	filter := bson.M{"_id": id}
@@ -112,42 +112,42 @@ func (mp *MongoPack) GetTask(id primitive.ObjectID) *Task {
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
 			fmt.Println("No task found with the given ID.")
-			return nil
+			return nil, fmt.Errorf("no task found with the given ID")
 		} else {
-			log.Fatal(err)
+			return nil, err
 		}
 	}
 
-	return &task
+	return &task, nil
 }
 
-func (mp *MongoPack) FilterTasksByStatus(status string) *[]Task {
+func (mp *MongoPack) FilterTasksByStatus(status string) (*[]Task, error) {
 	checkInitilized()
 
 	filter := bson.M{"status": status}
 	cursor, err := mp.collection.Find(context.TODO(), filter)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	defer cursor.Close(context.TODO())
 
 	var tasks []Task
 	if err := cursor.All(context.TODO(), &tasks); err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	return &tasks
+	return &tasks, nil
 }
 
-func (mp *MongoPack) GetAllTasks() []Task {
+func (mp *MongoPack) GetAllTasks() ([]Task, error) {
 	checkInitilized()
 
 	filter := bson.M{}
 
 	cursor, err := mp.collection.Find(context.TODO(), filter)
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
 	defer cursor.Close(context.TODO())
@@ -158,15 +158,15 @@ func (mp *MongoPack) GetAllTasks() []Task {
 		var task Task
 		err := cursor.Decode(&task)
 		if err != nil {
-			log.Fatal(err)
+			return nil, err
 		}
 
 		tasks = append(tasks, task)
 	}
 
 	if err := cursor.Err(); err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
 
-	return tasks
+	return tasks, nil
 }

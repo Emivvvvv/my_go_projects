@@ -7,40 +7,49 @@ import (
 
 var db = DBTaskController.InitDB()
 
-func AddTask(c *fiber.Ctx) error {
-	var data map[string]string
+type AddTaskBody struct {
+	Title       string `json:"title" xml:"title" form:"title"`
+	Description string `json:"description" xml:"description" form:"description"`
+}
 
-	if err := c.BodyParser(&data); err != nil {
+type MarkTaskBody struct {
+	Id string `json:"id" xml:"id" form:"id"`
+}
+
+func AddTask(c *fiber.Ctx) error {
+	t := new(AddTaskBody)
+	if err := c.BodyParser(t); err != nil {
 		return err
 	}
 
-	title := data["title"]
-	description := data["description"]
+	if len(t.Title) != 0 || len(t.Description) != 0 {
+		newTask := DBTaskController.GenerateTaskToAdd(t.Title, t.Description, "Pending...")
+		err := db.AddTask(newTask)
 
-	if len(title) != 0 || len(description) != 0 {
-		newTask := DBTaskController.GenerateTaskToAdd(title, description, "Pending...")
-		db.AddTask(newTask)
-
-		return c.Status(200).SendString("user successfully added to the database")
+		if err != nil {
+			return c.Status(200).SendString("user successfully added to the database")
+		} else {
+			return err
+		}
 	} else {
 		return c.Status(400).SendString("title or description can not be empty")
 	}
 }
 
 func GetTask(c *fiber.Ctx) error {
-	var data map[string]string
-
-	if err := c.BodyParser(&data); err != nil {
-		return err
-	}
-
-	id := data["id"]
+	id := c.Params("id")
 
 	if len(id) != 0 {
-		task := db.GetTask(DBTaskController.StringToObjectID(id))
-		if task == nil {
-			return c.Status(500).SendString("Couldn't find the task with id provided")
+		id, err := DBTaskController.StringToObjectID(id)
+		if err != nil {
+			return err
 		}
+
+		task, err := db.GetTask(id)
+		if task == nil {
+			return err
+		}
+
 		return c.JSON(task)
 	} else {
 		return c.Status(400).SendString("id can not be empty")
@@ -48,24 +57,37 @@ func GetTask(c *fiber.Ctx) error {
 }
 
 func ViewTasks(c *fiber.Ctx) error {
-	return c.JSON(db.GetAllTasks())
-}
+	tasks, err := db.GetAllTasks()
 
-func MarkTask(c *fiber.Ctx) error {
-	var data map[string]string
-
-	if err := c.BodyParser(&data); err != nil {
+	if err != nil {
 		return err
 	}
 
-	id := data["id"]
+	return c.JSON(tasks)
+}
 
-	if len(id) != 0 {
-		task := db.GetTask(DBTaskController.StringToObjectID(id))
-		if task == nil {
-			return c.Status(500).SendString("Couldn't find the task with id provided")
+func MarkTask(c *fiber.Ctx) error {
+	t := new(MarkTaskBody)
+	if err := c.BodyParser(t); err != nil {
+		return err
+	}
+
+	if len(t.Id) != 0 {
+		id, err := DBTaskController.StringToObjectID(t.Id)
+		if err != nil {
+			return err
 		}
-		db.UpdateTask(DBTaskController.StringToObjectID(id), DBTaskController.UpdateStatus("Completed!"))
+
+		task, err := db.GetTask(id)
+		if task == nil {
+			return err
+		}
+
+		err = db.UpdateTask(id, DBTaskController.UpdateStatus("Completed!"))
+		if err != nil {
+			return err
+		}
+
 		return c.Status(200).SendString("user with provided id successfully marked")
 	} else {
 		return c.Status(400).SendString("id can not be empty")
@@ -73,15 +95,24 @@ func MarkTask(c *fiber.Ctx) error {
 }
 
 func DeleteTask(c *fiber.Ctx) error {
-	oldId := c.Params("id")
-	id := oldId[1:]
+	id := c.Params("id")
 
 	if len(id) != 0 {
-		task := db.GetTask(DBTaskController.StringToObjectID(id))
-		if task == nil {
-			return c.Status(500).SendString("Couldn't find the task with id provided")
+		id, err := DBTaskController.StringToObjectID(id)
+		if err != nil {
+			return err
 		}
-		db.DeleteTask(DBTaskController.StringToObjectID(id))
+
+		task, err := db.GetTask(id)
+		if task == nil {
+			return err
+		}
+
+		err = db.DeleteTask(id)
+		if err != nil {
+			return err
+		}
+
 		return c.Status(200).SendString("user with provided id successfully deleted")
 	} else {
 		return c.Status(400).SendString("id can not be empty")
@@ -93,12 +124,17 @@ func FilterTasksByStatus(c *fiber.Ctx) error {
 
 	if len(mode) != 0 {
 		var filteredTasks *[]DBTaskController.Task
-		if mode == ":0" || mode == ":pending" {
-			filteredTasks = db.FilterTasksByStatus("Pending...")
-		} else if mode == ":1" || mode == ":completed" {
-			filteredTasks = db.FilterTasksByStatus("Completed!")
+		var err error
+		if mode == "0" || mode == "pending" {
+			filteredTasks, err = db.FilterTasksByStatus("Pending...")
+		} else if mode == "1" || mode == "completed" {
+			filteredTasks, err = db.FilterTasksByStatus("Completed!")
 		} else {
-			return c.Status(500).SendString("mode can only be 0 or pending for Pending... tasks and 1 or completed for Completed! tasks")
+			return c.Status(500).SendString(mode)
+			//return c.Status(500).SendString("mode can only be 0 or pending for Pending... tasks and 1 or completed for Completed! tasks")
+		}
+		if err != nil {
+			return err
 		}
 		return c.JSON(*filteredTasks)
 	} else {

@@ -7,12 +7,14 @@ import (
 
 func Routers(app *fiber.App) {
 	app.Get("/", hello)
-	app.Post("/user", TaskManager.AddTask)
-	app.Get("/user:id", TaskManager.GetTask)
-	app.Get("/users", TaskManager.ViewTasks)
-	app.Put("/user", TaskManager.MarkTask)
-	app.Delete("/user:id", TaskManager.DeleteTask)
-	app.Get("/users:mode", TaskManager.FilterTasksByStatus)
+
+	app.Post("/task", TaskManager.AddTask)
+	app.Get("/task/:id", TaskManager.GetTask)
+	app.Put("/task", TaskManager.MarkTask)
+	app.Delete("/task/:id", TaskManager.DeleteTask)
+
+	app.Get("/tasks", TaskManager.ViewTasks)
+	app.Get("/tasks/:mode", TaskManager.FilterTasksByStatus)
 }
 
 func hello(c *fiber.Ctx) error {
