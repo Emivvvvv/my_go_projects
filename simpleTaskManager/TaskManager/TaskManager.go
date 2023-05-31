@@ -1,171 +1,107 @@
 package TaskManager
 
 import (
-	"context"
-	"fmt"
-	"go.mongodb.org/mongo-driver/bson"
-	"go.mongodb.org/mongo-driver/bson/primitive"
-	"go.mongodb.org/mongo-driver/mongo"
-	"go.mongodb.org/mongo-driver/mongo/options"
-	"log"
-	"simpleTaskManager/MongoDB"
+	"github.com/gofiber/fiber/v2"
+	"simpleTaskManager/DBTaskController"
 )
 
-type Task struct {
-	ID          primitive.ObjectID `bson:"_id,omitempty"`
-	Title       string             `bson:"title"`
-	Description string             `bson:"description"`
-	Status      string             `bson:"status"`
-}
+var db = DBTaskController.InitDB()
 
-func (task Task) Print() {
-	fmt.Println("Task ID:", task.ID)
-	fmt.Println("Title:", task.Title)
-	fmt.Println("Description:", task.Description)
-	fmt.Println("Status:", task.Status)
-	fmt.Println("-----------------------------")
-}
+func AddTask(c *fiber.Ctx) error {
+	var data map[string]string
 
-type MongoPack struct {
-	clientOptions *options.ClientOptions
-	client        *mongo.Client
-	collection    *mongo.Collection
-}
+	if err := c.BodyParser(&data); err != nil {
+		return err
+	}
 
-var initilized = false
+	title := data["title"]
+	description := data["description"]
 
-func InitDB() *MongoPack {
-	initilized = true
-	clientOptions, client, collection := MongoDB.ConnectToMongo()
-	return &MongoPack{clientOptions, client, collection}
-}
+	if len(title) != 0 || len(description) != 0 {
+		newTask := DBTaskController.GenerateTaskToAdd(title, description, "Pending...")
+		db.AddTask(newTask)
 
-func checkInitilized() {
-	if !initilized {
-		log.Fatal("Use initDB() function to connect to the database first!")
+		return c.Status(200).SendString("user successfully added to the database")
+	} else {
+		return c.Status(400).SendString("title or description can not be empty")
 	}
 }
 
-func GenerateTaskToAdd(title string, description string, status string) *bson.D {
-	return &bson.D{
-		{Key: "title", Value: title},
-		{Key: "description", Value: description},
-		{Key: "status", Value: status},
+func GetTask(c *fiber.Ctx) error {
+	var data map[string]string
+
+	if err := c.BodyParser(&data); err != nil {
+		return err
+	}
+
+	id := data["id"]
+
+	if len(id) != 0 {
+		task := db.GetTask(DBTaskController.StringToObjectID(id))
+		if task == nil {
+			return c.Status(500).SendString("Couldn't find the task with id provided")
+		}
+		return c.JSON(task)
+	} else {
+		return c.Status(400).SendString("id can not be empty")
 	}
 }
 
-func UpdateStatus(status string) *bson.D {
-	return &bson.D{
-		{Key: "status", Value: status},
+func ViewTasks(c *fiber.Ctx) error {
+	return c.JSON(db.GetAllTasks())
+}
+
+func MarkTask(c *fiber.Ctx) error {
+	var data map[string]string
+
+	if err := c.BodyParser(&data); err != nil {
+		return err
+	}
+
+	id := data["id"]
+
+	if len(id) != 0 {
+		task := db.GetTask(DBTaskController.StringToObjectID(id))
+		if task == nil {
+			return c.Status(500).SendString("Couldn't find the task with id provided")
+		}
+		db.UpdateTask(DBTaskController.StringToObjectID(id), DBTaskController.UpdateStatus("Completed!"))
+		return c.Status(200).SendString("user with provided id successfully marked")
+	} else {
+		return c.Status(400).SendString("id can not be empty")
 	}
 }
 
-func StringToObjectID(id string) primitive.ObjectID {
-	objID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
-		log.Fatal("Invalid ID")
-	}
+func DeleteTask(c *fiber.Ctx) error {
+	oldId := c.Params("id")
+	id := oldId[1:]
 
-	return objID
-}
-
-func (mp *MongoPack) AddTask(newTask *bson.D) {
-	checkInitilized()
-
-	insertResult, err := mp.collection.InsertOne(context.TODO(), newTask)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("Inserted a new todo with id: ", insertResult.InsertedID)
-}
-
-func (mp *MongoPack) DeleteTask(id primitive.ObjectID) {
-	checkInitilized()
-
-	_, err := mp.collection.DeleteOne(context.TODO(), bson.M{"_id": id})
-
-	if err != nil {
-		log.Fatal(err)
+	if len(id) != 0 {
+		task := db.GetTask(DBTaskController.StringToObjectID(id))
+		if task == nil {
+			return c.Status(500).SendString("Couldn't find the task with id provided")
+		}
+		db.DeleteTask(DBTaskController.StringToObjectID(id))
+		return c.Status(200).SendString("user with provided id successfully deleted")
+	} else {
+		return c.Status(400).SendString("id can not be empty")
 	}
 }
 
-func (mp *MongoPack) UpdateTask(id primitive.ObjectID, newUpdate *bson.D) {
-	checkInitilized()
+func FilterTasksByStatus(c *fiber.Ctx) error {
+	mode := c.Params("mode")
 
-	update := bson.D{{"$set", newUpdate}}
-	_, err := mp.collection.UpdateOne(context.TODO(), bson.M{"_id": id}, update)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func (mp *MongoPack) GetTask(id primitive.ObjectID) *Task {
-	checkInitilized()
-
-	filter := bson.M{"_id": id}
-	var task Task
-
-	err := mp.collection.FindOne(context.TODO(), filter).Decode(&task)
-	if err != nil {
-		if err == mongo.ErrNoDocuments {
-			fmt.Println("No task found with the given ID.")
-			return nil
+	if len(mode) != 0 {
+		var filteredTasks *[]DBTaskController.Task
+		if mode == ":0" || mode == ":pending" {
+			filteredTasks = db.FilterTasksByStatus("Pending...")
+		} else if mode == ":1" || mode == ":completed" {
+			filteredTasks = db.FilterTasksByStatus("Completed!")
 		} else {
-			log.Fatal(err)
+			return c.Status(500).SendString("mode can only be 0 or pending for Pending... tasks and 1 or completed for Completed! tasks")
 		}
+		return c.JSON(*filteredTasks)
+	} else {
+		return c.Status(400).SendString("mode can not be empty")
 	}
-
-	return &task
-}
-
-func (mp *MongoPack) FilterTasksByStatus(status string) *[]Task {
-	checkInitilized()
-
-	filter := bson.M{"status": status}
-	cursor, err := mp.collection.Find(context.TODO(), filter)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer cursor.Close(context.TODO())
-
-	var tasks []Task
-	if err := cursor.All(context.TODO(), &tasks); err != nil {
-		log.Fatal(err)
-	}
-
-	return &tasks
-}
-
-func (mp *MongoPack) GetAllTasks() []Task {
-	checkInitilized()
-
-	filter := bson.M{}
-
-	cursor, err := mp.collection.Find(context.TODO(), filter)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer cursor.Close(context.TODO())
-
-	tasks := make([]Task, 0)
-
-	for cursor.Next(context.TODO()) {
-		var task Task
-		err := cursor.Decode(&task)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		tasks = append(tasks, task)
-	}
-
-	if err := cursor.Err(); err != nil {
-		log.Fatal(err)
-	}
-
-	return tasks
 }
