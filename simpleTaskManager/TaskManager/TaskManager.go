@@ -1,7 +1,9 @@
 package TaskManager
 
 import (
+	"fmt"
 	"github.com/gofiber/fiber/v2"
+	"simpleTaskManager/Auth"
 	"simpleTaskManager/DBTaskController"
 )
 
@@ -16,6 +18,32 @@ type MarkTaskBody struct {
 	Id string `json:"id" xml:"id" form:"id"`
 }
 
+func GetUserID(c *fiber.Ctx) (string, error) {
+	sess, sessErr := Auth.Store.Get(c)
+	if sessErr != nil {
+		return "", c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "something went wrong: " + sessErr.Error(),
+		})
+	}
+
+	userID := sess.Get("USER_ID")
+	if userID != nil {
+		userIDStr, ok := userID.(string)
+		if ok {
+			return userIDStr, nil
+		} else {
+			return "", c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"message": "user ID in session is not a string",
+			})
+		}
+	} else {
+		return "", c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"message": "user ID not found in session",
+		})
+	}
+
+}
+
 func AddTask(c *fiber.Ctx) error {
 	t := new(AddTaskBody)
 	if err := c.BodyParser(t); err != nil {
@@ -23,7 +51,11 @@ func AddTask(c *fiber.Ctx) error {
 	}
 
 	if len(t.Title) != 0 || len(t.Description) != 0 {
-		newTask := DBTaskController.GenerateTaskToAdd(t.Title, t.Description, "Pending...")
+		userID, idErr := GetUserID(c)
+		if idErr != nil {
+			return idErr
+		}
+		newTask := DBTaskController.GenerateTaskToAdd(userID, t.Title, t.Description, "Pending...")
 		err := db.AddTask(newTask)
 
 		if err != nil {
@@ -83,12 +115,21 @@ func MarkTask(c *fiber.Ctx) error {
 			return err
 		}
 
+		userID, idErr := GetUserID(c)
+		if idErr != nil {
+			return idErr
+		}
+
+		if task.TaskOwner != userID {
+			return fmt.Errorf("user don't have the authority to update this task")
+		}
+
 		err = db.UpdateTask(id, DBTaskController.UpdateStatus("Completed!"))
 		if err != nil {
 			return err
 		}
 
-		return c.Status(200).SendString("user with provided id successfully marked")
+		return c.Status(200).SendString("task with provided id successfully marked")
 	} else {
 		return c.Status(400).SendString("id can not be empty")
 	}
@@ -108,12 +149,21 @@ func DeleteTask(c *fiber.Ctx) error {
 			return err
 		}
 
+		userID, idErr := GetUserID(c)
+		if idErr != nil {
+			return idErr
+		}
+
+		if task.TaskOwner != userID {
+			return fmt.Errorf("user don't have the authority to delete this task")
+		}
+
 		err = db.DeleteTask(id)
 		if err != nil {
 			return err
 		}
 
-		return c.Status(200).SendString("user with provided id successfully deleted")
+		return c.Status(200).SendString("task with provided id successfully deleted")
 	} else {
 		return c.Status(400).SendString("id can not be empty")
 	}

@@ -13,6 +13,7 @@ import (
 
 type Task struct {
 	ID          primitive.ObjectID `bson:"_id,omitempty"`
+	TaskOwner   string             `bson:"task_owner"`
 	Title       string             `bson:"title"`
 	Description string             `bson:"description"`
 	Status      string             `bson:"status"`
@@ -21,6 +22,7 @@ type Task struct {
 func (task Task) Print() {
 	fmt.Println("-----------------------------")
 	fmt.Println("Task ID:", task.ID)
+	fmt.Println("Task Owner ID:", task.TaskOwner)
 	fmt.Println("Title:", task.Title)
 	fmt.Println("Description:", task.Description)
 	fmt.Println("Status:", task.Status)
@@ -47,8 +49,9 @@ func checkInitilized() {
 	}
 }
 
-func GenerateTaskToAdd(title string, description string, status string) *bson.D {
+func GenerateTaskToAdd(owner string, title string, description string, status string) *bson.D {
 	return &bson.D{
+		{Key: "task_owner", Value: owner},
 		{Key: "title", Value: title},
 		{Key: "description", Value: description},
 		{Key: "status", Value: status},
